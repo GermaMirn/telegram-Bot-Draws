@@ -1,7 +1,7 @@
 from telebot import types
 from datetime import datetime
 from getBotInstance import bot
-from db.dbRequests import createDraw, deleteDraw, getAllDraws, addAdmin, deleteAdmin, getAllAdmins, getAllUsers, checkDraw, getAuthorDraw, getInformationDraw, getStartDateDraw, getEndDateDraw, addWinner, getWinnersDraw, getParticipants, getAllChatID, getDrawURLFromDb
+from db.dbRequests import createDraw, deleteDraw, getAllDraws, addAdmin, deleteAdmin, getAllAdmins, getAllUsers, checkDraw, getAuthorDraw, getInformationDraw, getStartDateDraw, getEndDateDraw, addWinner, getWinnersDraw, getParticipants, getAllChatID, getDrawURLFromDb, deleteWinner, addTelegramChannelName, deleteTelegramChannelName, gettelegramChannelNames
 
 def welcomeAdmin(message):
     bot.send_message(
@@ -38,11 +38,17 @@ def panelForDraw(message):
         InfoDraw = types.InlineKeyboardButton("Информация о розыгрыше", callback_data=f"infoDraw")
         getDrawURL = types.InlineKeyboardButton("Получить url для розыгрыша", callback_data=f"getDrawURL")
         deleteDraw = types.InlineKeyboardButton("Удалить розыгрыш", callback_data=f"deleteDraw")
-        determineWinners = types.InlineKeyboardButton("Выбрать победителей", callback_data=f"determineWinners")
+        determineWinners = types.InlineKeyboardButton("Добавить победителя", callback_data=f"determineWinners")
+        deleteWinners = types.InlineKeyboardButton("Удалить победителя", callback_data=f"deleteWinners")
+        addSponsor = types.InlineKeyboardButton("Добавить спонсора", callback_data=f"addSponsor")
+        deleteSponsor = types.InlineKeyboardButton("Удалить спонсора", callback_data=f"deleteSponsor")
         drawPanelMarkup = types.InlineKeyboardMarkup()
         drawPanelMarkup.row(InfoDraw)
         drawPanelMarkup.row(getDrawURL)
         drawPanelMarkup.row(determineWinners)
+        drawPanelMarkup.row(deleteWinners)
+        drawPanelMarkup.row(addSponsor)
+        drawPanelMarkup.row(deleteSponsor)
         drawPanelMarkup.row(deleteDraw)
 
         bot.send_message(message.chat.id, f"Панель для '{CURRENTDRAW}' розыгрыша:", reply_markup=drawPanelMarkup)
@@ -57,6 +63,7 @@ def InfoDraw(call):
         dateObject = datetime.strptime(dateStr, "%Y-%m-%d %H:%M:%S.%f")
         winners = getWinnersDraw(CURRENTDRAW)
         participates = getParticipants(CURRENTDRAW)
+        getTelegramChannelNames = gettelegramChannelNames(CURRENTDRAW)
         lenParticipates = 0
 
         if list == type(winners):
@@ -66,13 +73,17 @@ def InfoDraw(call):
             lenParticipates = len(participates)
             participates = '\n '.join(f"@{participate}" for participate in participates)
 
+        if list == type(getTelegramChannelNames):
+            getTelegramChannelNames = '\n '.join(f"@{telegramChannelNames}" for telegramChannelNames in getTelegramChannelNames)
+
         bot.send_message(
             call.message.chat.id, 
             f"<b>Создатель розыгрыша:</b> {getAuthorDraw(CURRENTDRAW)}\n\n"
             f"<b>Описание розыгрыша:</b> {getInformationDraw(CURRENTDRAW)}\n\n"
             f"<b>Начало розыгрыша с {dateObject.strftime("%d.%m.%y")} до {getEndDateDraw(CURRENTDRAW)}</b>\n\n"
             f"<b>Победители в розыгрыше:</b>\n {winners}\n\n"
-            f"<b>Участники розыгрыша:</b>\n {participates}\n\n<b>Количество участников:</b> {lenParticipates}", 
+            f"<b>Участники розыгрыша:</b>\n {participates}\n<b>Количество участников:</b> {lenParticipates}\n\n"
+            f"<b>Спонсоры розыгрыша:</b>\n {getTelegramChannelNames}", 
             parse_mode="html"
         )
     except Exception as e:
@@ -114,8 +125,6 @@ def deleteDraws(call):
     if curDraw:
         permissionToDelete(call)
 
-
-
 def determineWinners(call):
     try:
         curDraw = CURRENTDRAW
@@ -128,13 +137,76 @@ def determineWinners(call):
         bot.register_next_step_handler(call.message, getWinnerAndAddWinner)
     
     def getWinnerAndAddWinner(message):
-        usernameWnner = message.text
+        usernameWinner = message.text
         try:
-            bot.send_message(call.message.chat.id, f"{addWinner(CURRENTDRAW, usernameWnner)}")
+            bot.send_message(call.message.chat.id, f"{addWinner(CURRENTDRAW, usernameWinner)}")
         except Exception as e:
             bot.send_message(call.message.chat.id, f"Не удалось получить информацию: {str(e)}")
     if curDraw:
         getUsernameWinner(call)
+
+def deleteWinners(call):
+    try:
+        curDraw = CURRENTDRAW
+    except Exception as e:
+        curDraw = False
+        mainPanelAdmin(call.message)
+        
+    def getUsernameWinner(call):
+        bot.send_message(call.message.chat.id, "Введите никнейм пользователя, которого удаляем: ")
+        bot.register_next_step_handler(call.message, getWinnerAndDeleteWinner)
+
+    def getWinnerAndDeleteWinner(message):
+        usernameWinner = message.text
+        try:
+            bot.send_message(call.message.chat.id, f"{deleteWinner(CURRENTDRAW, usernameWinner)}")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"Не удалось получить информацию: {str(e)}")
+
+    if curDraw:
+        getUsernameWinner(call)
+
+def addSponsor(call):
+    try:
+        curDraw = CURRENTDRAW
+    except Exception as e:
+        curDraw = False
+        mainPanelAdmin(call.message)
+
+    def getTelegramChannelNames(call):
+        bot.send_message(call.message.chat.id, "Введите название канала:")
+        bot.register_next_step_handler(call.message, getTelegramChannelNamesAdd)
+    
+    def getTelegramChannelNamesAdd(message):
+        telegramChannelName = message.text
+        try:
+            bot.send_message(call.message.chat.id, f"{addTelegramChannelName(CURRENTDRAW, telegramChannelName)}")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"Не удалось получить информацию: {str(e)}")
+    if curDraw:
+        getTelegramChannelNames(call)
+
+def deleteSponsor(call):
+    try:
+        curDraw = CURRENTDRAW
+    except Exception as e:
+        curDraw = False
+        mainPanelAdmin(call.message)
+        
+    def getTelegramChannelNames(call):
+        bot.send_message(call.message.chat.id, "Введите название канала: ")
+        bot.register_next_step_handler(call.message, getTelegramChannelNamesAndDelete)
+
+    def getTelegramChannelNamesAndDelete(message):
+        telegramChannelName = message.text
+        try:
+            bot.send_message(call.message.chat.id, f"{deleteTelegramChannelName(CURRENTDRAW, telegramChannelName)}")
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"Не удалось получить информацию: {str(e)}")
+
+    if curDraw:
+        getTelegramChannelNames(call)
+    
 
 def panelForStatistics(message):
     allUsersBot = types.InlineKeyboardButton("Все пользователи", callback_data="allUsersBot")

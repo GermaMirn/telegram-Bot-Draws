@@ -1,8 +1,9 @@
 from getBotInstance import bot
+from telebot import types
 import panels.user as user
 import panels.admin as admin
 from db.dbRequests import getAllAdmins
-from db.dbRequests import createForHostMainTables, getAllDraws, addNewUser
+from db.dbRequests import createForHostMainTables, getAllDraws, addNewUser, gettelegramChannelNames
 
 keybordMessageId = None
 
@@ -10,29 +11,80 @@ def getAllAdmin():
     allAdmins = getAllAdmins()
     global ADMIN
     ADMIN = allAdmins
+    if len(allAdmins) == 0:
+        ADMIN = [
+            "obladaetyou",
+            "nerdOfi"
+        ]
 
 
 def isAdmin(username):
     return username in ADMIN
 
+userData = {}
+
 @bot.message_handler(commands=["start"])
 def start(message):
+    addNewUser(message.from_user.username, message.chat.id)
     username = message.from_user.username
     if isAdmin(username):
         admin.welcomeAdmin(message)
     else:
         params = message.text.split()
+
         if len(params) > 1:
-            param = params[1]
-            allDraws = getAllDraws()
-            if param in allDraws:
-                addNewUser(message.from_user.username, message.chat.id)
-                user.urlDrawMenu(message, param)
-            else:
-                bot.send_message(message.chat.id, "К сожалению, этот розыгрышь уже закончился. Однако у нас есть ещё и другие розыгрыши")
-                user.welcomeUser(message)
+            drawName = params[1]
+            userData[message.chat.id] = {'drawName': drawName}
+
+            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            button = types.KeyboardButton("Я не робот")
+            keyboard.add(button)
+
+            bot.send_message(message.chat.id, "Привет! Пожалуйста, нажмите кнопку ниже для проверки.", reply_markup=keyboard)
         else:
             user.welcomeUser(message)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("draw_"))
+def handleDrawSelection(call):
+    drawName = call.data.split("_")[1]
+    userData[call.message.chat.id] = {'drawName': drawName}
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    button = types.KeyboardButton("Я не робот")
+    keyboard.add(button)
+    bot.send_message(call.message.chat.id, "Привет! Пожалуйста, нажмите кнопку ниже для проверки.", reply_markup=keyboard)
+
+@bot.message_handler(func=lambda message: message.text == "Я не робот")
+def checkSubscription(message):
+    chatId = message.chat.id
+    userId = message.from_user.id
+    allDraws = getAllDraws()
+
+    drawName = userData.get(chatId, {}).get('drawName')
+    if not drawName:
+        bot.send_message(chatId, "Не удалось получить информацию о розыгрыше.")
+        return
+
+    channelId = gettelegramChannelNames(drawName)
+    refactoryChannelId = ", ".join(f"@{channel}" for channel in channelId)
+    hideKeyboard = types.ReplyKeyboardRemove()
+
+    try:
+        status = bot.get_chat_member(refactoryChannelId, userId).status
+
+        if status in ['member', 'administrator', 'creator']:
+            if drawName in allDraws:
+                bot.send_message(message.chat.id, "Вы успешно прошли проверку!", reply_markup=hideKeyboard)
+                user.urlDrawMenu(message, drawName)
+            else:
+                bot.send_message(message.chat.id, "К сожалению, этот розыгрышь уже закончился. Однако у нас есть ещё и другие розыгрыши", reply_markup=hideKeyboard)
+                user.welcomeUser(message)
+        else:
+            bot.send_message(chatId, f"Вы не подписаны на нашего спонсора. Пожалуйста, подпишитесь: {refactoryChannelId}")
+    except Exception as e:
+        bot.send_message(message.chat.id, "К сожалению, этот розыгрышь уже закончился. Однако у нас есть ещё и другие розыгрыши", reply_markup=hideKeyboard)
+        user.welcomeUser(message)
+        print(e)
+
 
 @bot.message_handler(commands=["help"])
 def helpMenu(message):
@@ -108,6 +160,9 @@ CALLBACK_FUNCTIONS_ADMIN = {
     "deleteDraw": admin.deleteDraws,
     "getDrawURL": admin.getDrawURL,
     "determineWinners": lambda call: admin.determineWinners(call),
+    "deleteWinners": lambda call: admin.deleteWinners(call),
+    "addSponsor": lambda call: admin.addSponsor(call),
+    "deleteSponsor": lambda call: admin.deleteSponsor(call),
     "deleteAdmins": lambda call: (
         bot.send_message(call.message.chat.id, "Напишите имя администратора: "),
         bot.register_next_step_handler(call.message, admin.deleteAdmins)
@@ -123,7 +178,7 @@ CALLBACK_FUNCTIONS_USER = {
     "allDraw": lambda call: (
         bot.send_message(call.message.chat.id, "Вот все доступные розыгрыши:"),
         user.listOfDraws(call.message),
-        bot.register_next_step_handler(call.message, user.handleDrawName)
+        # bot.register_next_step_handler(call.message, user.handleDrawName)
     ),
     "writeDraw": lambda call: (
         bot.send_message(call.message.chat.id, "Чтобы продолжить, введите название розыгрыша: "),

@@ -35,11 +35,11 @@ def listOfDraws(message):
     allDraws = getAllDraws()
     bot.send_message(message.chat.id,
                      f"<b>Все розыгрыши:</b>\n {'\n '.join(allDraws)} \n\n <b>Количество розыгрышей:{len(allDraws)}</b>",
-                     parse_mode="html")
+                     parse_mode="html") 
 
-    markupDraw = types.ReplyKeyboardMarkup()
+    markupDraw = types.InlineKeyboardMarkup()
     for draw_name in allDraws:
-        button = types.KeyboardButton(f"{draw_name}")
+        button = types.InlineKeyboardButton(f"{draw_name}", callback_data=f"draw_{draw_name}")
         markupDraw.add(button)
     
     bot.send_message(message.chat.id,
@@ -121,7 +121,7 @@ def InfoDrawUser(call):
             call.message.chat.id, 
             f"<b>Создатель розыгрыша:</b> {getAuthorDraw(CURRENTDRAW)}\n\n"
             f"<b>Описание розыгрыша:</b> {getInformationDraw(CURRENTDRAW)}\n\n"
-            f"<b>Начало розыгрыша с {dateObject.strftime("%d.%m.%y")} до {getEndDateDraw(CURRENTDRAW)}</b>\n\n"
+            f"<b>Начало розыгрыша с {dateObject.strftime('%d.%m.%y')} до {getEndDateDraw(CURRENTDRAW)}</b>\n\n"
             f"<b>Победители в розыгрыше:</b>\n {winners}\n\n"
             f"<b>Количество участников:</b> {lenParticipates}", 
             parse_mode="html"

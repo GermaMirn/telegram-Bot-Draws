@@ -44,13 +44,35 @@ def createForHostMainTables():
             information VARCHAR(250),
             winners TEXT[],
             participants TEXT[],
-            drawURL VARCHAR(120)
+            drawURL VARCHAR(120),
+            telegramChannelNames TEXT[]
           );
         """)
       connection.commit()
 
   except Exception as e:
     return f"Ошибка: {e}"
+  finally:
+    releaseConnection(connection)
+
+def gettelegramChannelNames(drawName):
+  connection = getConnection()
+  try:
+    with connection.cursor() as cursor:
+      query = """
+          SELECT telegramChannelNames
+          FROM drawDetails
+          JOIN draws ON drawDetails.drawId = draws.id
+          WHERE draws.draw = %s
+      """
+      cursor.execute(query, (drawName,))
+      result = cursor.fetchone()
+      if result and result[0]:
+        return result[0]
+      else:
+        return "Спонсоров ещё нет"
+  except Exception as e:
+    return f"Не получилось получить информацию о спонсорах: {e}"
   finally:
     releaseConnection(connection)
 
@@ -270,6 +292,43 @@ def addWinner(drawName, winner):
   finally:
     releaseConnection(connection)
 
+def deleteWinner(drawName, winner):
+  connection = getConnection()
+  try:
+    with connection.cursor() as cursor:
+      cursor.execute("""SELECT id FROM draws WHERE draw = %s;""", (drawName,))
+      draw_id = cursor.fetchone()
+
+      if not draw_id:
+          return "Розыгрыш не найден"
+
+      draw_id = draw_id[0]
+
+      cursor.execute("""
+          SELECT EXISTS (
+              SELECT 1 
+              FROM drawDetails 
+              WHERE drawId = %s AND %s = ANY(winners)
+          );
+      """, (draw_id, winner))
+      participant_exists = cursor.fetchone()[0]
+
+      if not participant_exists:
+          return "Этот победитель не найден"
+
+      cursor.execute(
+          """
+          UPDATE drawDetails
+          SET winners = array_remove(winners, %s)
+          WHERE drawId = %s;
+          """, (winner, draw_id))
+      connection.commit()
+      return "Победитель был удален"
+  except Exception as e:
+    return f"Ошибка: {e}"
+  finally:
+    releaseConnection(connection)
+
 def getDrawURLFromDb(drawName):
   connection = getConnection()
   try:
@@ -330,6 +389,80 @@ def addParticipants(drawName, participants):
     return f"Ошибка: {e}"
   finally:
     releaseConnection(connection)
+
+def addTelegramChannelName(drawName, telegramChannelName):
+  connection = getConnection()
+  try:
+    with connection.cursor() as cursor:
+        cursor.execute("""SELECT id FROM draws WHERE draw = %s;""", (drawName,))
+        draw_id = cursor.fetchone()
+        
+        if not draw_id:
+          return "Розыгрыш не найден"
+        
+        draw_id = draw_id[0]
+
+        cursor.execute("""
+            SELECT EXISTS(
+                SELECT 1 
+                FROM drawDetails 
+                WHERE drawId = %s AND %s = ANY(telegramChannelNames)
+            );
+        """, (draw_id, telegramChannelName))
+        participant_exists = cursor.fetchone()[0]
+
+        if participant_exists:
+            return "Этот спонсор уже был добавлен"
+
+        cursor.execute(
+            """
+            UPDATE drawDetails
+            SET telegramChannelNames = array_append(telegramChannelNames, %s)
+            WHERE drawId = %s;
+            """, (telegramChannelName, draw_id))
+        connection.commit()
+        return "Спонсор был добавлен"
+  except Exception as e:
+      return f"Ошибка: {e}"
+  finally:
+      releaseConnection(connection)
+
+def deleteTelegramChannelName(drawName, telegramChannelName):
+  connection = getConnection()
+  try:
+    with connection.cursor() as cursor:
+        cursor.execute("""SELECT id FROM draws WHERE draw = %s;""", (drawName,))
+        draw_id = cursor.fetchone()
+
+        if not draw_id:
+          return "Розыгрыш не найден"
+
+        draw_id = draw_id[0]
+
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 
+                FROM drawDetails 
+                WHERE drawId = %s AND %s = ANY(telegramChannelNames)  -- Исправлено имя столбца
+            );
+        """, (draw_id, telegramChannelName))
+        participant_exists = cursor.fetchone()[0]
+
+        if not participant_exists:
+          return "Этот спонсор не найден"
+
+        cursor.execute(
+            """
+            UPDATE drawDetails
+            SET telegramChannelNames = array_remove(telegramChannelNames, %s)  -- Исправлено имя столбца
+            WHERE drawId = %s;
+            """, (telegramChannelName, draw_id))
+        connection.commit()
+        return "Спонсор был удален"
+  except Exception as e:
+      return f"Ошибка: {e}"
+  finally:
+      releaseConnection(connection)
 
 def addAdmin(username):
   connection = getConnection()
